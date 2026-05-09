@@ -45,14 +45,12 @@ public class DamageCaster : MonoBehaviour
         //当前角色是玩家
         if (currentCamp == CampType.Player)
         {
-            //如果检测到敌人
-            if (other.CompareTag("Enemy"))
+            // 用 EnemyBase 判定，避免根物体漏打 Enemy 标签时无法受伤
+            EnemyBase enemy = other.GetComponentInParent<EnemyBase>();
+            if (enemy != null)
             {
                 Debug.Log("检测到敌人");
-                //敌人受伤
-                other.gameObject.GetComponent<EnemyBase>()
-                    .Hurt(Player.Instance.attackPower);
-              
+                enemy.Hurt(Player.Instance.attackPower);
             }
             
         }else if (currentCamp == CampType.Enemy)
