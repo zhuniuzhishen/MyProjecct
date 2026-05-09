@@ -4,6 +4,9 @@ using UnityEngine;
 //敌人父类
 public class EnemyBase: MonoBehaviour
 {
+    [SerializeField] protected bool showWorldHealthBar = true;
+    [SerializeField] protected Vector3 healthBarLocalOffset = new Vector3(0f, 1.85f, 0f);
+
     public Animator _anim; //动画器
     
     //攻击相关
@@ -23,6 +26,16 @@ public class EnemyBase: MonoBehaviour
     public float hp = 100f; //敌人血量
     public float maxHp = 100f; //敌人最大血量
     public bool isDead = false; //是否死亡
+
+    protected virtual void Awake()
+    {
+        if (!showWorldHealthBar || GetComponentInChildren<EnemyWorldHealthBar>(true) != null)
+            return;
+        var hbGo = new GameObject("WorldHealthBar");
+        hbGo.transform.SetParent(transform, false);
+        hbGo.transform.localPosition = healthBarLocalOffset;
+        hbGo.AddComponent<EnemyWorldHealthBar>();
+    }
     
     //受伤函数 由敌人攻击调用
     public void Hurt(float damage)

@@ -20,7 +20,7 @@ public class Enemy2 : EnemyBase
     
     private void Awake()
     {
-       
+        base.Awake();
         _nav = GetComponent<NavMeshAgent>();
         _anim = GetComponent<Animator>();
 
