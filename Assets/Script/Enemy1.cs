@@ -16,7 +16,7 @@ public class Enemy1 : EnemyBase
     
     
     
-    private void Awake()
+    protected override void Awake()
     {
         base.Awake();
         _nav = GetComponent<NavMeshAgent>();

@@ -1,293 +1,339 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Player : MonoBehaviour
 {
-
     public static Player Instance;
-    
+
     public Rigidbody _rb;
-    public Animator _anim; 
-    
-    public float moveSpeed = 5f; //移动速度
-    public float horizontalInput; //水平方向输入
-    public float verticalInput; //垂直方向输入
-    public Vector3 inputDirection; //输入方向
-    
-    //移动
-    public bool isMove = false; //是否移动
+    public Animator _anim;
 
-    //翻滚
-    public bool canRoll = true; //是否可以翻滚
-    public bool isRolling = false; //是否正在翻滚
-    public float rollingTimer = 0; //翻滚定时器
-    public float rollingTime = 0.4f; //一次翻滚动画的持续时间
-    public float rollCollingTimer = 0; //冷却时间定时器
-    public float rollCollingTime = 1f; //冷却时间
-    
-    //受伤
-    public bool isHurting = false; //正在受伤中
-    public float dontHurtTimer = 0 ; //不受伤定时器
-    public float dontHurtTime = 1f ; //不受伤时间
-    public float hp = 100f; //当前生命值
-    public float maxHp = 100f; //最大生命值
-    
-    //金币值
-    public int coin = 200; //初始200金币
-    
-    //攻击
-    public float attackPower = 30; 
-    public BoxCollider _attackTriggerBox; //攻击触发器
+    public float moveSpeed = 5f;
+    public float horizontalInput;
+    public float verticalInput;
+    public Vector3 inputDirection;
 
-    
-    //死亡
-    public bool isDead = false; //是否死亡
-    
-    //下落
-    public bool isGrounded = true; //是否在地面上
-    public float gravity = -3.5f; //重力
-    
+    public bool isMove;
 
-    private void Awake()
+    public bool canRoll = true;
+    public float rollingTime = 0.4f;
+    public float rollCollingTimer;
+    public float rollCollingTime = 1f;
+
+    public float hp = 100f;
+    public float maxHp = 100f;
+
+    public int coin = 200;
+
+    public float attackPower = 30f;
+    public BoxCollider _attackTriggerBox;
+
+    public bool isDead;
+
+    public bool isGrounded = true;
+    public float gravity = -3.5f;
+
+    [Header("FSM — Attack combo")]
+    [Tooltip("第 1 段攻击时长（与 ATTACK_01 动画大致对齐）")]
+    public float attackHitDuration1 = 0.52f;
+
+    [Tooltip("第 2 段攻击时长（与 ATTACK_02 动画大致对齐）")]
+    public float attackHitDuration2 = 0.52f;
+
+    [Tooltip("第 3 段攻击时长（与 ATTACK_03 动画大致对齐）")]
+    public float attackHitDuration3 = 0.58f;
+
+    [Tooltip("当前段开始后至少经过这么久，才接受下一次点击连段（防止同一帧误吞）")]
+    public float comboChainMinTime = 0.06f;
+
+    [Range(0.5f, 1f)]
+    [Tooltip("当前段时长的比例：超过后不再接受连段输入（避免动画末尾才触发下一段）")]
+    public float comboChainWindowEnd = 0.9f;
+
+    [Range(0f, 1f)]
+    [Tooltip("攻击中水平位移 = moveSpeed * 该系数")]
+    public float attackMoveScale = 0.28f;
+
+    /// <summary>当前连击段 0=第一刀, 1=第二刀, 2=第三刀</summary>
+    public int ComboIndex { get; private set; }
+
+    [Header("FSM — Hurt")]
+    [Tooltip("硬直期间无法移动、翻滚、攻击")]
+    public float hurtStunTime = 0.35f;
+
+    [Tooltip("无敌帧：期间再次受伤无效（可大于硬直）")]
+    public float hurtInvulnTime = 1f;
+
+    public PlayerStateId CurrentStateId { get; private set; } = PlayerStateId.Idle;
+
+    public bool isRolling => CurrentStateId == PlayerStateId.Roll;
+
+    public bool isHurting => _invulnTimer > 0f;
+
+    public bool HasMoveInput { get; private set; }
+
+    public Vector3 WorldMoveDirection { get; private set; }
+
+    public Vector3 RollWorldDirection { get; private set; }
+
+    public float RollPhaseTimer;
+    public float AttackPhaseTimer;
+    public float HurtStunTimer;
+
+    IPlayerState _state;
+    readonly Dictionary<PlayerStateId, IPlayerState> _states = new Dictionary<PlayerStateId, IPlayerState>();
+
+    float _invulnTimer;
+
+    void Awake()
     {
         Instance = this;
-        
+
         _rb = GetComponent<Rigidbody>();
         _anim = GetComponent<Animator>();
 
-        _rb.freezeRotation = true; //不能通过物理引擎旋转 
-        _rb.useGravity = false; //不使用重力
+        _rb.freezeRotation = true;
+        _rb.useGravity = false;
+
+        _states[PlayerStateId.Idle] = PlayerIdleState.Instance;
+        _states[PlayerStateId.Move] = PlayerMoveState.Instance;
+        _states[PlayerStateId.Roll] = PlayerRollState.Instance;
+        _states[PlayerStateId.Attack] = PlayerAttackState.Instance;
+        _states[PlayerStateId.Hurt] = PlayerHurtState.Instance;
+        _states[PlayerStateId.Dead] = PlayerDeadState.Instance;
+
+        _state = _states[PlayerStateId.Idle];
+        CurrentStateId = PlayerStateId.Idle;
+        _state.Enter(this);
     }
 
-    // Start is called before the first frame update
     void Start()
     {
-        _attackTriggerBox = transform.Find("DamageCaster")
-            .GetComponent<BoxCollider>();
+        _attackTriggerBox = transform.Find("DamageCaster").GetComponent<BoxCollider>();
     }
 
-    // Update is called once per frame
     void Update()
     {
-        //如果死亡
         if (isDead)
-        {
             return;
-        }
 
-        
-        //监听鼠标左键
-        if (Input.GetMouseButtonDown(0))
-        {
-            _anim.SetTrigger("Attack");
-        }
-        
-        
-        //如果正在受击
-        if (isHurting)
-        {
-            dontHurtTimer += Time.deltaTime;
-            if (dontHurtTimer >= dontHurtTime)
-            {
-                isHurting = false;
-                dontHurtTimer = 0;
-            }
-        }
-        
-        
-        horizontalInput = Input.GetAxisRaw("Horizontal");
-        verticalInput = Input.GetAxisRaw("Vertical"); 
-        inputDirection.Set(horizontalInput, 0, verticalInput);
-        inputDirection.Normalize();
-        
-        //判断模长
-        if (inputDirection.magnitude != 0)
-        {
-            isMove = true;
-        }
-        else
-        {
-            isMove = false;
-        }
-        _anim.SetBool("isMove", isMove);
-        
-        
-        
-        //方向转45度, 跟游戏方向保持一致
-        inputDirection = Quaternion.Euler(0, -45f, 0) * inputDirection; 
-        
-        
-        //角色转向
-        if (inputDirection != Vector3.zero)
-        {
-            transform.rotation = Quaternion.LookRotation(inputDirection);
-        }
+        ReadInput();
 
+        _invulnTimer = Mathf.Max(0f, _invulnTimer - Time.deltaTime);
 
-        //按下空格, 开始翻滚
-        if (Input.GetKeyDown(KeyCode.Space) && canRoll)
-        {
-            canRoll = false; //禁止再翻滚
-            isRolling = true; //标记开始翻滚中
-            _anim.SetTrigger("Roll"); //动画器触发事件
-        }
-        
-        
-        //判断正在翻滚时间
-        if (isRolling)
-        {
-            rollingTimer += Time.deltaTime;
-            if (rollingTimer >= rollingTime) //到达0.4秒 翻滚完成
-            {
-                isRolling = false; //结束翻滚
-                rollingTimer = 0; 
-            }
-        }
-        
-        //判断冷却时间
         if (!canRoll)
         {
             rollCollingTimer += Time.deltaTime;
-            if (rollCollingTimer >= rollCollingTime) //冷却定时器大于1秒
+            if (rollCollingTimer >= rollCollingTime)
             {
-                rollCollingTimer = 0; //定时器重置
-                canRoll = true; //可以正常翻滚
+                rollCollingTimer = 0f;
+                canRoll = true;
             }
-            
         }
-        
-        
-        
+
+        _state.Update(this);
+
+        if (CurrentStateId == PlayerStateId.Idle
+            || CurrentStateId == PlayerStateId.Move
+            || CurrentStateId == PlayerStateId.Attack)
+        {
+            if (HasMoveInput && WorldMoveDirection.sqrMagnitude > 0.0001f)
+                transform.rotation = Quaternion.LookRotation(WorldMoveDirection);
+        }
     }
 
-
-    private void FixedUpdate()
+    void FixedUpdate()
     {
-        //下落
         if (!isGrounded)
-        {
-            transform.Translate(0, gravity * Time.fixedDeltaTime, 0);
-        }
-        
-        
-        //翻滚中
-        if (isRolling)
-        {
-            _rb.velocity = transform.forward * moveSpeed * 2.5f; 
+            transform.Translate(0f, gravity * Time.fixedDeltaTime, 0f);
 
+        if (isDead)
+        {
+            _state.FixedUpdate(this);
             return;
         }
-        
-        
-        //移动函数
-        _rb.velocity = inputDirection * moveSpeed; 
-        
-        
-        
-        
+
+        _state.FixedUpdate(this);
     }
-    
-    
-    //受伤函数 由敌人攻击调用
+
+    void ReadInput()
+    {
+        horizontalInput = Input.GetAxisRaw("Horizontal");
+        verticalInput = Input.GetAxisRaw("Vertical");
+        inputDirection.Set(horizontalInput, 0f, verticalInput);
+        if (inputDirection.sqrMagnitude > 1f)
+            inputDirection.Normalize();
+
+        HasMoveInput = inputDirection.sqrMagnitude > 0.0001f;
+
+        if (HasMoveInput)
+        {
+            var dir = Quaternion.Euler(0f, -45f, 0f) * inputDirection;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.0001f)
+                dir.Normalize();
+            WorldMoveDirection = dir;
+        }
+        else
+        {
+            WorldMoveDirection = Vector3.zero;
+        }
+
+        isMove = HasMoveInput;
+        _anim.SetBool("isMove", isMove);
+    }
+
+    public void ChangeState(PlayerStateId next)
+    {
+        if (_state != null)
+            _state.Exit(this);
+
+        _state = _states[next];
+        CurrentStateId = next;
+        _state.Enter(this);
+    }
+
+    public float GetCurrentAttackHitDuration()
+    {
+        switch (ComboIndex)
+        {
+            case 0: return Mathf.Max(0.05f, attackHitDuration1);
+            case 1: return Mathf.Max(0.05f, attackHitDuration2);
+            default: return Mathf.Max(0.05f, attackHitDuration3);
+        }
+    }
+
+    public bool CanAcceptComboInput()
+    {
+        float d = GetCurrentAttackHitDuration();
+        return AttackPhaseTimer >= comboChainMinTime
+               && AttackPhaseTimer <= d * comboChainWindowEnd;
+    }
+
+    public void BeginAttackCombo()
+    {
+        ComboIndex = 0;
+        AttackPhaseTimer = 0f;
+        _anim.SetTrigger("Attack");
+    }
+
+    public void AdvanceAttackCombo()
+    {
+        if (ComboIndex >= 2)
+            return;
+        ComboIndex++;
+        AttackPhaseTimer = 0f;
+        _anim.SetTrigger("Attack");
+    }
+
+    public void ResetAttackCombo()
+    {
+        ComboIndex = 0;
+        AttackPhaseTimer = 0f;
+    }
+
+    public bool WantsAttack()
+    {
+        return Input.GetMouseButtonDown(0);
+    }
+
+    public bool WantsRoll()
+    {
+        return Input.GetKeyDown(KeyCode.Space) && canRoll;
+    }
+
+    public void BeginRoll()
+    {
+        canRoll = false;
+        RollPhaseTimer = 0f;
+
+        if (HasMoveInput && WorldMoveDirection.sqrMagnitude > 0.0001f)
+            RollWorldDirection = WorldMoveDirection;
+        else
+        {
+            var f = transform.forward;
+            RollWorldDirection = new Vector3(f.x, 0f, f.z);
+            if (RollWorldDirection.sqrMagnitude < 0.0001f)
+                RollWorldDirection = Vector3.forward;
+            RollWorldDirection.Normalize();
+        }
+
+        _anim.SetTrigger("Roll");
+    }
+
     public void Hurt(float damage)
     {
-        //如果玩家正在受击
-        if (isHurting)
-        {
+        if (isDead)
             return;
-        }
-        
-        
-        isHurting = true; //正在受击
-        hp = MathF.Max(0, hp - damage); //剩余血量
-        _anim.SetTrigger("Hurt");
-        GameManager.Instance.UpdateHealth();  //修改血条
 
-        //判断死亡
-        if (hp <= 0)
+        if (_invulnTimer > 0f)
+            return;
+
+        hp = MathF.Max(0f, hp - damage);
+        GameManager.Instance.UpdateHealth();
+
+        if (hp <= 0f)
         {
             Dead();
+            return;
         }
-        
+
+        HurtStunTimer = hurtStunTime;
+        _invulnTimer = hurtInvulnTime;
+        ChangeState(PlayerStateId.Hurt);
     }
-    
-    
-    //死亡
+
     public void Dead()
     {
-        isDead = true; 
-        
+        if (isDead)
+            return;
+
+        isDead = true;
+        ChangeState(PlayerStateId.Dead);
         _anim.SetTrigger("Dead");
-        
-        
-        //游戏失败
         GameManager.Instance.GameOver();
-
-
     }
-    
-    //碰撞
-    private void OnCollisionEnter(Collision collision)
+
+    void OnCollisionEnter(Collision collision)
     {
-        //如果是地板
         if (collision.collider.CompareTag("Floor"))
-        {
             isGrounded = true;
-        }
-        
     }
 
-    private void OnCollisionExit(Collision other)
+    void OnCollisionExit(Collision other)
     {
         if (other.collider.CompareTag("Floor"))
-        {
             isGrounded = false;
-        }
     }
 
-    private void OnCollisionStay(Collision collisionInfo)
+    void OnCollisionStay(Collision collisionInfo)
     {
         if (collisionInfo.collider.CompareTag("Floor"))
-        {
             isGrounded = true;
-        }
     }
-    
-    
-    //打开攻击检测触发器
+
     public void OpenAttackTrigger()
     {
         _attackTriggerBox.enabled = true;
         Debug.Log("打开碰撞器");
     }
-    
-    
-    //打开攻击检测触发器
+
     public void CloseAttackTrigger()
     {
-        _attackTriggerBox.enabled = false; 
+        _attackTriggerBox.enabled = false;
         Debug.Log("关闭碰撞器");
     }
-    
-    
-    //增加金币
+
     public void AddCoin(int c)
     {
-        coin += c; 
+        coin += c;
         GameManager.Instance.UpdateCoin();
-        
-    }
-    
-    
-    //增加血量
-    public void AddHealth(float h)
-    {
-        hp = MathF.Min(hp + h, maxHp) ;
-        GameManager.Instance.UpdateHealth();
-        
-        
     }
 
+    public void AddHealth(float h)
+    {
+        hp = MathF.Min(hp + h, maxHp);
+        GameManager.Instance.UpdateHealth();
+    }
 }

@@ -1,9 +1,9 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>
+
 /// 世界空间 UI Slider 血条：挂在敌人子物体上，跟随敌人本地位移，每帧朝向摄像机。
-/// </summary>
+
 [DisallowMultipleComponent]
 public class EnemyWorldHealthBar : MonoBehaviour
 {
