@@ -1,9 +1,13 @@
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 
 
-/// 世界空间 UI Slider 血条：挂在敌人子物体上，跟随敌人本地位移，每帧朝向摄像机。
-
+/// <summary>
+/// 世界空间 UI 血条：挂在敌人子物体上，跟随敌人本地位移；
+/// 每帧 LateUpdate 朝向主摄像机（Billboard）；用 DOTween 平滑血量变化；死亡后隐藏。
+/// 若 EnemyBase 启用自动生成，会在运行时 BuildUi 动态创建 Slider 与 Image。
+/// </summary>
 [DisallowMultipleComponent]
 public class EnemyWorldHealthBar : MonoBehaviour
 {
@@ -11,9 +15,11 @@ public class EnemyWorldHealthBar : MonoBehaviour
 
     [SerializeField] Vector3 canvasScale = new Vector3(0.004f, 0.004f, 0.004f);
     [SerializeField] int sortingOrder = 50;
+    [SerializeField] float fillTweenDuration = 0.28f;
 
     Slider _slider;
     EnemyBase _enemy;
+    float _cachedHp = float.NaN;
 
     static Sprite SimpleWhiteSprite()
     {
@@ -26,13 +32,15 @@ public class EnemyWorldHealthBar : MonoBehaviour
         return s_simpleWhite;
     }
 
+    /// <summary>查找父级敌人并生成 UI，首次把 Slider 拉到当前血量比例。</summary>
     void Awake()
     {
         _enemy = GetComponentInParent<EnemyBase>();
         BuildUi();
-        RefreshValue();
+        RefreshValueTweened();
     }
 
+    /// <summary>Billboard + 死亡隐藏 + 血量变化时 tween Slider。</summary>
     void LateUpdate()
     {
         if (_enemy == null || _slider == null)
@@ -54,17 +62,41 @@ public class EnemyWorldHealthBar : MonoBehaviour
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);
 
-        RefreshValue();
+        RefreshValueTweened();
     }
 
-    void RefreshValue()
+    /// <summary>将 Slider.value 设为 hp/maxHp；血量相对上次缓存变化时用 DOValue 过渡。</summary>
+    void RefreshValueTweened()
     {
         if (_enemy == null || _slider == null)
             return;
+
         float max = _enemy.maxHp > 0f ? _enemy.maxHp : 1f;
-        _slider.value = Mathf.Clamp01(_enemy.hp / max);
+        float target = Mathf.Clamp01(_enemy.hp / max);
+
+        if (float.IsNaN(_cachedHp))
+        {
+            _cachedHp = _enemy.hp;
+            _slider.DOKill(false);
+            _slider.value = target;
+            return;
+        }
+
+        if (Mathf.Approximately(_enemy.hp, _cachedHp))
+            return;
+
+        _cachedHp = _enemy.hp;
+        _slider.DOKill(false);
+        _slider.DOValue(target, fillTweenDuration).SetEase(Ease.OutQuad);
     }
 
+    void OnDisable()
+    {
+        if (_slider != null)
+            _slider.DOKill(false);
+    }
+
+    /// <summary>运行时拼出一个 World Space Canvas + Slider（背景、填充区、隐藏把手区以满足 Slider 结构）。</summary>
     void BuildUi()
     {
         var canvas = gameObject.AddComponent<Canvas>();
@@ -150,6 +182,7 @@ public class EnemyWorldHealthBar : MonoBehaviour
         _slider.value = 1f;
     }
 
+    /// <summary>把 RectTransform 四锚点拉满父级，用于铺满条形容器。</summary>
     static void StretchFull(RectTransform rt)
     {
         rt.anchorMin = Vector2.zero;

@@ -1,44 +1,30 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.VFX;
 
+/// <summary>
+/// 敌人脚步与攻击表现：由 Animator 动画事件调用 FootStepVFX / AttackVFX，与 AI 逻辑解耦。
+/// </summary>
 public class EnemyVFXManager : MonoBehaviour
 {
-    public VisualEffect footStep; //脚步特效
-    public VisualEffect attackVFX; //攻击特效
+    public VisualEffect footStep;
+    public VisualEffect attackVFX;
 
-    public EnemyBase enemyBase;  //敌人基类
+    public EnemyBase enemyBase;
 
     private void Awake()
     {
         enemyBase = GetComponent<EnemyBase>();
     }
 
-
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-       
-    }
-    
-    //播放脚步特效 由动画器事件调用
+    /// <summary>动画事件：脚底落地时播放脚步。</summary>
     public void FootStepVFX()
     {
         footStep.Play();
     }
-    
-    //攻击特效
+
+    /// <summary>动画事件：挥击或开火瞬间播放攻击特效。</summary>
     public void AttackVFX()
     {
         attackVFX.Play();
     }
-    
 }

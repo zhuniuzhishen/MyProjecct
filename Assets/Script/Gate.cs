@@ -1,36 +1,26 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// 关卡栅栏门：Spawner 在“第一波剩余 2 只敌人”时调用 OpenGate；
+/// 协程在 duration 秒内把门从当前位置沿世界 Y 轴插值移动到 targetY（负值表示下降）。
+/// </summary>
 public class Gate : MonoBehaviour
 {
+    public static Gate Instance;
 
-    public static Gate Instance; 
-    
-    
-    public float targetY = -2.5f; //打开门后 降落的高度
-    public float duration = 2f; //开门2秒
+    [Tooltip("相对当前位置沿 Y 轴移动的距离（负值=向下开门）")]
+    public float targetY = -2.5f;
+
+    [Tooltip("开门动画总时长（秒）")]
+    public float duration = 2f;
 
     private void Awake()
     {
         Instance = this;
     }
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-
-
-    //打开大门
+    /// <summary>启动开门协程（可重复调用会叠加多个协程，一般只设计调用一次）。</summary>
     public void OpenGate()
     {
         StartCoroutine(OpenGateAnim());
@@ -45,16 +35,8 @@ public class Gate : MonoBehaviour
         while (currentDuration < duration)
         {
             currentDuration += Time.deltaTime;
-
-            transform.position = Vector3.Lerp(
-                startPos,
-                targetPos,
-                currentDuration / duration
-            );
-
+            transform.position = Vector3.Lerp(startPos, targetPos, currentDuration / duration);
             yield return null;
-
         }
-
     }
 }

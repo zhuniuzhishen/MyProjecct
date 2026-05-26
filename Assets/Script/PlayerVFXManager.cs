@@ -1,72 +1,63 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.VFX;
 
+/// <summary>
+/// 玩家视觉特效：根据是否在移动开关脚步 VFX；三段挥砍由动画事件分别调用 PlayAttackVFX01~03。
+/// heal 字段预留，可在拾血动画事件中调用 Play。
+/// </summary>
 public class PlayerVFXManager : MonoBehaviour
 {
+    public VisualEffect footStep;
+    public VisualEffect heal;
+    public ParticleSystem blade01;
+    public ParticleSystem blade02;
+    public ParticleSystem blade03;
 
-    public VisualEffect footStep; //移动
-    public VisualEffect heal; //回血特效
-    public ParticleSystem blade01; //攻击特效1
-    public ParticleSystem blade02; //攻击特效2
-    public ParticleSystem blade03; //攻击特效3
+    /// <summary>与 Player.isMove 同步，用于检测“移动状态是否变化”以开关脚步。</summary>
+    public bool isPlayingFoot = false;
 
-    public bool isPlayingFoot = false; // 当前是否正在播放动画
-    
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
     void Update()
     {
+        if (Player.Instance == null || footStep == null)
+            return;
 
-        
-        // 异或 两个相同则为false, 两者不同则为true
-        // 没移动, 不执行
-        // 刚开始移动,  执行一次if, 启动特效, 标记isPlayingFoot为真
-        // 移动后, if不再执行, 一直播放特效
-        // 停止移动前,执行if, 特效停止,  标记isPlayingFoot为假
-        // 停止移动后, if不执行
+        // 异或：移动状态与特效开关不一致时才切换，避免每帧重复 Play/Stop
         if (isPlayingFoot ^ Player.Instance.isMove)
         {
             Update_FootStp(Player.Instance.isMove);
             isPlayingFoot = !isPlayingFoot;
         }
-        
     }
-    
-    //脚步特效
+
     private void Update_FootStp(bool state)
     {
+        if (footStep == null)
+            return;
+
         if (state)
-        {
-            footStep.Play(); 
-        }
+            footStep.Play();
         else
-        {
             footStep.Stop();
-        }
     }
-    
-    //攻击1连击特效
+
+    /// <summary>动画事件：第一刀挥砍粒子。</summary>
     public void PlayAttackVFX01()
     {
-        blade01.Play();
+        if (blade01 != null)
+            blade01.Play();
     }
-    
-    //攻击2连击特效
+
+    /// <summary>动画事件：第二刀挥砍粒子。</summary>
     public void PlayAttackVFX02()
     {
-        blade02.Play();
+        if (blade02 != null)
+            blade02.Play();
     }
-    
-    //攻击3连击特效
+
+    /// <summary>动画事件：第三刀挥砍粒子。</summary>
     public void PlayAttackVFX03()
     {
-        blade03.Play();
+        if (blade03 != null)
+            blade03.Play();
     }
 }
